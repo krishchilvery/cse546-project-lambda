@@ -1,8 +1,9 @@
 from boto3 import client as boto3_client
 import os
+import re
 
-input_bucket = "546proj2"
-output_bucket = "546proj2output"
+input_bucket = "546proj2-oneszeros"
+output_bucket = "546proj2output-oneszeros"
 test_cases = "test_cases/"
 
 def clear_input_bucket():
@@ -48,7 +49,40 @@ def upload_files(test_case):
 		if filename.endswith(".mp4") or filename.endswith(".MP4"):
 			print("Uploading to input bucket..  name: " + str(filename)) 
 			upload_to_input_bucket_s3(test_dir, filename)
-			
+
+def read_mapping():
+	results = []
+	with open("mapping", "r") as f:
+		for line in f.readlines():
+			line = line.strip()
+			filename, major, year = re.split(":|,", line)
+			key = filename.split(".")[0]	
+			if line:
+				results.append((key, major, year))
+	return results
+
+def verify_outputs():
+	global output_bucket
+	expected_results = read_mapping()
+	s3 = boto3_client('s3')
+	total = len(expected_results)
+	count = 0
+	for key, major, year in expected_results:
+		obj = s3.get_object(Bucket=output_bucket, Key=key)
+		result = obj["Body"].read().decode("utf-8")
+		result = result.strip()
+		name, predicted_major, predicted_year = result.split(",")
+		if predicted_major != major or predicted_year != year:
+			print("Error in output for " + key)
+			print("Expected: " + major + ", " + year)
+			print("Got: " + predicted_major + ", " + predicted_year)
+		else:
+			print("Verified output for " + key)
+			count += 1
+	print("Total: " + str(total))
+	print("Verified: " + str(count))
+	print("Accuracy: " + str(count/total))
+
 	
 def workload_generator():
 	
@@ -59,9 +93,12 @@ def workload_generator():
 	upload_files("test_case_2")
 	
 
-# clear_input_bucket()
-clear_output_bucket()	
-workload_generator()	
-
+# First Run the workload generator
+# Then run the verify outputs
+if __name__ == "__main__":
+	clear_input_bucket()
+	clear_output_bucket()	
+	workload_generator()	
+	# verify_outputs()
 	
 
